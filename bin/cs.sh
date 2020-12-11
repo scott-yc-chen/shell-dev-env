@@ -7,7 +7,7 @@ export USE_ABS=n
 to_abs_path() {
     local relative_path=$1
     if [  $USE_ABS = "y" ]; then
-        echo $(cd "$relative_path"; /bin/pwd) 
+        echo $(cd "$relative_path"; /bin/pwd)
     else
         echo $1
     fi
@@ -21,8 +21,8 @@ to_abs_paths() {
 
 add_cscope_search_path() {
     shift 1
-    for param in "$@"; do 
-        if [ "$param" != "" ]; then 
+    for param in "$@"; do
+        if [ "$param" != "" ]; then
             to_abs_path "$param" >> $CSCOPE_LIST
             cat $CSCOPE_LIST | sort | uniq > $CSCOPE_LIST.tmp
             mv $CSCOPE_LIST.tmp $CSCOPE_LIST
@@ -46,7 +46,8 @@ print_cscope_list() {
 }
 
 remove_CSCOPE_FILES() {
-    rm -rf cscope.* ncscope.out
+    set -x
+    rm -rf cscope.* ncscope.out tags
 }
 
 clear_cscope_list() {
@@ -61,7 +62,12 @@ append_to_CSCOPE_FILES() {
     local file=$1
     local here=`pwd`
     if [ -f $CSCOPE_LIST ]; then
-        find `cat $here/$CSCOPE_LIST` -type f -name "$file" | grep -v svn >> $here/$CSCOPE_FILES 2> /dev/null
+        echo "Scanning $1"
+        find `cat $here/$CSCOPE_LIST` -type f -name "$file" \
+            -not -path "*.git/*" \
+            -not -path "*./node_modules/*" \
+            -not -path "*.svn/*" \
+            >> $here/$CSCOPE_FILES 2> /dev/null
     else
         echo "Error: Failed to find $CSCOPE_LIST"
         exit
@@ -101,13 +107,21 @@ generate_cscope_files() {
 generate_cscope_out() {
     if [ -f $CSCOPE_FILES ]; then
         echo -n "Generating cscope.out ("
-        echo -n "cscope -b -k)..." && cscope -b -k 
+        echo -n "cscope -b -k)..." && cscope -b -k
         echo "Done (`size_of_file ./cscope.out`)"
     else
         echo "Error: Failed to find $CSCOPE_FILES"
         exit
         #echo -n "cscope -R -b -k)..." && cscope -R -b -k
     fi
+}
+
+generate_ctags() {
+    ctags -R \
+        --exclude=.git \
+        --exclude=node_modules \
+        --exclude=.svn \
+        `cat ${CSCOPE_LIST}`
 }
 
 usage() {
@@ -132,31 +146,33 @@ cs_add() {
     add_cscope_search_path $@
     generate_cscope_files
     generate_cscope_out
+    generate_ctags
+}
+
+cs_update() {
+    generate_cscope_files
+    generate_cscope_out
+    generate_ctags
 }
 
 trap control_c SIGINT SIGTERM
 
 case "$1" in
-    add) 
+    add)
         cs_add $@
         ;;
-    abs) 
+    abs)
         USE_ABS=y
         cs_add $@
         ;;
-    up)
-        generate_cscope_files
-        generate_cscope_out
+    up|update)
+        cs_update
         ;;
-    update)
-        generate_cscope_files
-        generate_cscope_out
-        ;;
-    list) 
+    list)
         print_cscope_list
         ;;
-    clean) 
-        clear_cscope_list       
+    clean)
+        clear_cscope_list
         ;;
     *)
         usage
